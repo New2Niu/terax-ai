@@ -603,6 +603,11 @@ const UNSHIFTED_SYMBOLS: Readonly<Record<string, string>> = {
 function unshiftedCodepoint(event: KeyboardEvent): number {
   const character = event.key.toLowerCase().codePointAt(0) ?? 0;
   if (event.key.length === 1 && character >= 32 && character !== 127) {
+    // A Shift-only text key must stay text: with the Kitty flags applications
+    // normally push, supplying the unshifted base makes the encoder emit
+    // `CSI 59;2u` for Shift+;, which apps decode as ";" instead of ":".
+    if (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey)
+      return 0;
     if (event.shiftKey) {
       const pair = UNSHIFTED_SYMBOLS[event.code];
       if (pair?.[1] === event.key) return pair.charCodeAt(0);

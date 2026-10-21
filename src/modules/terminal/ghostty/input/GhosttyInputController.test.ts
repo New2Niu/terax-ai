@@ -196,6 +196,68 @@ describe("GhosttyInputController", () => {
     },
   );
 
+  it.each(["ghostty-vt.wasm", "ghostty-vt-scalar.wasm"])(
+    "sends Shift-only text keys as text in Neovim's Kitty keyboard mode (%s)",
+    async (artifact) => {
+      const bytes = await readFile(
+        new URL(
+          `../../../../../packages/ghostty-core/adapted/${artifact}`,
+          import.meta.url,
+        ),
+      );
+      const core = await TeraxGhostty.loadBytes(Uint8Array.from(bytes).buffer);
+      const terminal = core.createTerminal(80, 24);
+      const input = new FakeTextArea();
+      const onData = vi.fn();
+      const controller = new GhosttyInputController({
+        model: {
+          ...inputModel(),
+          encodeKey: (event) => terminal.encodeKey(event),
+        },
+        input: input as unknown as HTMLTextAreaElement,
+        pointerTarget: new FakeElement() as unknown as HTMLElement,
+        cellSize: () => ({ width: 10, height: 20 }),
+        isMac: true,
+        onCopy: () => false,
+        onData,
+      });
+      try {
+        // Neovim replies to the protocol query and pushes disambiguate +
+        // report event types, which is what turns encoder output into CSI u.
+        terminal.write(new TextEncoder().encode("\x1b[>3u"));
+        const shifted: Array<[Partial<KeyboardEvent>, string]> = [
+          [{ key: ":", code: "Semicolon", shiftKey: true }, ":"],
+          [{ key: "A", code: "KeyA", shiftKey: true }, "A"],
+          [{ key: "!", code: "Digit1", shiftKey: true }, "!"],
+          [{ key: '"', code: "Quote", shiftKey: true }, '"'],
+        ];
+        for (const [values, expected] of shifted) {
+          const calls = onData.mock.calls.length;
+          input.dispatchEvent(keyboardEvent(values));
+          const out = onData.mock.calls[calls]?.[0];
+          expect(new TextDecoder().decode(out)).toBe(expected);
+        }
+        // Ctrl combos still report the unshifted base the protocol mandates.
+        input.dispatchEvent(
+          keyboardEvent({
+            key: "A",
+            code: "KeyA",
+            ctrlKey: true,
+            shiftKey: true,
+          }),
+        );
+        expect(
+          new TextDecoder().decode(
+            onData.mock.calls[onData.mock.calls.length - 1]?.[0],
+          ),
+        ).toBe("\x1b[97;6u");
+      } finally {
+        controller.dispose();
+        terminal.dispose();
+      }
+    },
+  );
+
   it("routes prompt paste to the command editor without also sending PTY bytes", () => {
     const model = inputModel();
     const onData = vi.fn();

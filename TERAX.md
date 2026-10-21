@@ -187,7 +187,9 @@ The block prompt retains an enabled terminal input proxy for native menus and
 routes editing keys, composed text and paste back to its command editor.
 Character drags retain a native selection pin from pointerdown, including before
 the first pointermove. Unmoved clicks and lost captures discard provisional pins.
-Key encoding supplies the base character required by Kitty keyboard mode; plain
+Key encoding supplies the base character for Ctrl and Alt combinations required
+by Kitty keyboard mode; Shift-only text keys stay text so applications receive
+the shifted character (a base here would decode as `;` instead of `:`). Plain
 keys and key releases also use Ghostty encoding when the application requests it.
 Terminal text uses the configured font, an installed Nerd Font when detected,
 or bundled JetBrains Mono. WKWebView canvas resolves neither user-installed
