@@ -190,10 +190,16 @@ the first pointermove. Unmoved clicks and lost captures discard provisional pins
 Key encoding supplies the base character required by Kitty keyboard mode; plain
 keys and key releases also use Ghostty encoding when the application requests it.
 Terminal text uses the configured font, an installed Nerd Font when detected,
-or bundled JetBrains Mono. Private-use prompt symbols require an installed font
-that supplies them; Terax does not ship a separate symbol font. Native color
-emoji remain on the system fallback path. Rerun requires the complete command
-submitted through Terax; truncated shell labels are never executed.
+or bundled JetBrains Mono. WKWebView canvas resolves neither user-installed
+fonts by family name nor `document.fonts.check` for them, so on macOS the
+configured (or auto-detected) family is read through `fonts_read_installed` and
+`fonts_find_installed` (`src-tauri/src/modules/fonts.rs`) and registered as a
+`FontFace` before the first measurement: the canvas probe then sees it and
+glyph rasterization draws its glyphs. Private-use prompt symbols require an
+installed font that supplies them; Terax does not ship a separate symbol font.
+Native color emoji remain on the system fallback path. Rerun requires the
+complete command submitted through Terax; truncated shell labels are never
+executed.
 Primary-screen full erase, scrollback erase, and terminal reset invalidate block
 pins at parse time and clear block chrome, selection, and search. Commands after
 an erase in the same output chunk retain their new pins. Alternate-screen erases
@@ -331,6 +337,7 @@ establish production readiness, platform parity, or multi-day resource stability
 - `pty::pty_*` - long-lived interactive PTY sessions (portable-pty ↔ Ghostty), managed by `PtyState` (`RwLock<HashMap<id, Session>>`). Output streams over the `terax-pty` multiplexed pull stream (hub thread, `pty_stream_open`, `pty_set_presentation`); input goes through a per-session writer thread.
 - `fs::tree::*` (`fs_read_dir`, `list_subdirs`), `fs::file::*` (`fs_read_file`, `fs_write_file`, `fs_stat`, `fs_canonicalize`), `fs::mutate::*` (`fs_create_file`, `fs_create_dir`, `fs_rename`, `fs_move`, `fs_delete`, `fs_delete_batch`), `fs::copy::fs_copy`, `fs::clipboard::fs_clipboard_paths`: file explorer + editor IO. File paste captures the workspace and root before clipboard IPC. AppKit and GTK clipboard requests run on the main thread; Windows clipboard retries and filesystem copies run on blocking workers. `fs_copy` requires an authorized root, stages each item and publishes with a no-replace rename, and returns `{ created, failed }` with paths in the caller’s workspace representation. Conflict renaming uses `name copy N` siblings. Symbolic links are preserved without traversing them; copying a folder into itself is rejected. Explorer refresh and pasted selection ignore completions from an obsolete workspace.
 - `fs::search::*` (`fs_search`, `fs_list_files`), `fs::grep::*` (`fs_grep`, `fs_grep_interactive`, `fs_glob`): fuzzy file finder + content search (powered by `ignore` + `grep-*` crates). File lists are cached per root in `fs::index` (packed buffer, at most two roots, 45 s TTL) and dropped by watcher events and our own mutations, so a keystroke ranks the cached list instead of re-walking the tree (a change reported during a cold walk marks that walk stale: its result is returned but not cached). Interactive searches bump a `fs::supersede` generation when the command is dispatched, so the walk of an older query stops while a newer one starts. Every command that touches the disk is `async` and runs on the blocking pool (`fs::blocking`): Tauri runs a plain command on the main thread, and the async runtime has two workers (`modules/runtime.rs`), so nothing blocking may run inline in an `async fn` either.
+- `fonts::fonts_read_installed`, `fonts::fonts_find_installed`: returns an installed font face (or the first installed candidate family) out of `~/Library/Fonts` and `/Library/Fonts`, so the webview can register it as a `FontFace`: WKWebView canvas resolves neither user-installed fonts by family name nor `document.fonts.check` for them, and the terminal grid draws its glyphs on that canvas. Fixed directories only, caller input is never joined into a path, reads are capped at 30 MB and lookups at 32 candidates; all of it on the blocking pool.
 - `git::commands::*`: full source-control surface (`git_status`, `git_diff`, `git_diff_content`, `git_stage`, `git_unstage`, `git_discard`, `git_commit`, `git_fetch`, `git_pull_ff_only`, `git_push`, `git_log`, `git_show_commit`, `git_commit_files`, `git_commit_file_diff`, `git_panel_snapshot`, `git_resolve_repo`, `git_remote_url`). All gated through the workspace authorization registry. `git_status` asks git for `--untracked-files=normal` (one `dir/` entry per untracked directory) and expands small untracked directories back into files with a bounded `git ls-files --others` (500 files and 16 directories per refresh, listing abandoned at a 256 KiB cap); a directory over budget stays collapsed as `dir/`, which stage and discard handle natively.
 - `shell::shell_run_command`: one-shot subshell exec used by AI tools (bounded `proc::capture`: two short reader threads, no wait on pipes a backgrounded grandchild keeps open). Distinct from PTY sessions; not the user's interactive terminal. On Windows via PowerShell (`-NoProfile -Command`), on Unix via `$SHELL -lc`. Shared helper `build_oneshot_command`.
 - `shell::shell_session_*`: persistent agent shell with state across calls. `shell::shell_bg_*` (`spawn`, `logs`, `kill`, `list`): long-running background processes (dev servers etc.) with bounded ring-buffer log capture.
