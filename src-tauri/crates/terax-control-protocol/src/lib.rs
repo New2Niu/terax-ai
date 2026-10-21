@@ -221,9 +221,7 @@ mod tests {
 
     #[test]
     fn caller_context_round_trips_with_and_without_a_pane() {
-        let with_pane = CallerContext {
-            pane_id: Some(3),
-        };
+        let with_pane = CallerContext { pane_id: Some(3) };
         let value = serde_json::to_value(&with_pane).unwrap();
         assert_eq!(value, json!({ "pane_id": 3 }));
         let back: CallerContext = serde_json::from_value(value).unwrap();

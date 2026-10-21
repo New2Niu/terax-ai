@@ -540,10 +540,10 @@ mod tests {
 
     #[test]
     fn leaves_unrelated_stderr_untouched() {
-        assert!(
-            classify_auth_error("fatal: not a git repository (or any of the parent directories)")
-                .is_none()
-        );
+        assert!(classify_auth_error(
+            "fatal: not a git repository (or any of the parent directories)"
+        )
+        .is_none());
         assert!(classify_auth_error("").is_none());
         assert!(
             classify_auth_error("error: RPC failed because the HTTP client could not connect")

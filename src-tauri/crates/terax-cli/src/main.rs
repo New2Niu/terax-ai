@@ -683,8 +683,7 @@ mod tests {
 
     #[test]
     fn loopback_parsing_rejects_hostnames_and_remote_hosts() {
-        let error =
-            parse_loopback_address("localhost:4312").expect_err("reject hostname");
+        let error = parse_loopback_address("localhost:4312").expect_err("reject hostname");
         assert_eq!(error.code, "invalid_endpoint");
         let error = parse_loopback_address("127.0.0.1").expect_err("reject missing port");
         assert_eq!(error.code, "invalid_endpoint");

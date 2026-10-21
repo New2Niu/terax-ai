@@ -52,12 +52,7 @@ impl DaFilter {
         false
     }
 
-    pub fn process<F: FnMut(&[u8])>(
-        &mut self,
-        input: &[u8],
-        out: &mut Vec<u8>,
-        mut respond: F,
-    ) {
+    pub fn process<F: FnMut(&[u8])>(&mut self, input: &[u8], out: &mut Vec<u8>, mut respond: F) {
         let mut i = 0;
         while i < input.len() {
             match self.state {
