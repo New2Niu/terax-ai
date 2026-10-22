@@ -7,7 +7,7 @@ import {
 import { initializeSessionGeneration as startSessionInitialization } from "@/modules/terminal/ghostty/sessionInitialization";
 import { replaceSessionSurface } from "@/modules/terminal/ghostty/replaceSessionSurface";
 import { openExternalUrl } from "@/lib/external-link";
-import { ensureMonoFontsLoaded, resolveFontFamily } from "@/lib/fonts";
+import { ensureMonoFontsLoaded } from "@/lib/fonts";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { TerminalBackendKind } from "@/modules/terminal/backend/contracts";
 import { setLeafPresentation } from "@/modules/terminal/lib/ptyPresentation";
@@ -83,6 +83,8 @@ type GhosttySession = {
   initializing: Promise<void> | null;
   startup: GhosttyStartupTimings;
   font: TerminalFontSpec;
+  /** Font the live surface renders; null until it has been measured for it. */
+  appliedFont: TerminalFontSpec | null;
 };
 
 type GhosttyStartupTimings = {
@@ -136,7 +138,7 @@ export function useGhosttyTerminalSession({
   const zoomLevel = usePreferencesStore((state) => state.zoomLevel);
   const font = useMemo<TerminalFontSpec>(
     () => ({
-      family: resolveFontFamily(fontFamily),
+      family: fontFamily,
       size: Math.max(4, Math.round(fontSize * zoomLevel)),
       lineHeight: 1.2,
       letterSpacing,
@@ -200,6 +202,7 @@ export function useGhosttyTerminalSession({
     if (visible && session.container) {
       try {
         attachGhosttySurface(session, surface);
+        void applySessionFont(session);
       } catch (error) {
         reportRendererFailure(session, toError(error));
       }
@@ -427,6 +430,7 @@ async function respawnGhosttySession(
   session.model?.dispose();
   session.model = null;
   session.callbacks.onModel?.(null);
+  session.appliedFont = null;
   session.ptyResize.reset();
   session.writer.detach();
   session.writer.clear();
@@ -565,6 +569,7 @@ function ensureSession(
         letterSpacing: 0,
         weight: "400",
       } satisfies TerminalFontSpec),
+    appliedFont: null,
   };
   sessions.set(leafId, session);
   return session;
@@ -631,7 +636,7 @@ async function initializeSessionGeneration(
           })
           .then(() => mark("gpuReadyMs"))
       : Promise.resolve().then(() => mark("gpuReadyMs"));
-  const [metrics] = await Promise.all([
+  let [metrics] = await Promise.all([
     metricsPromise,
     corePromise,
     rendererPromise,
@@ -764,6 +769,21 @@ async function initializeSessionGeneration(
     model.dispose();
     return;
   }
+  // Fonts resolve after the startup measurement but before this surface exists,
+  // and updateSessionFont has nothing to apply them to yet. Reconcile with the
+  // latest font here so the first tab does not stay on the pre-detect font.
+  while (fontSpecKey(metrics.font) !== fontSpecKey(session.font)) {
+    metrics = await measureTerminalFont(session.font);
+    if (session.disposed || generation !== session.generation) {
+      surface.dispose();
+      model.dispose();
+      return;
+    }
+    surface.setFontMetrics(metrics);
+    if (session.surfaceOptions)
+      session.surfaceOptions = { ...session.surfaceOptions, metrics };
+  }
+  session.appliedFont = metrics.font;
   mark("surfaceReadyMs");
   session.surface = surface;
   session.input = createGhosttyInput(session, model, surface);
@@ -1126,19 +1146,36 @@ async function updateSessionFont(
 ): Promise<void> {
   if (fontSpecKey(session.font) === fontSpecKey(font)) return;
   session.font = font;
-  if (!session.surface || session.disposed) return;
+  await applySessionFont(session);
+}
+
+/**
+ * Measures the requested font and applies it when the surface still renders an
+ * older one. A font resolved while no surface existed is picked up here, so a
+ * pane that becomes visible heals instead of keeping a stale grid.
+ */
+async function applySessionFont(session: GhosttySession): Promise<void> {
+  const surface = session.surface;
+  const font = session.font;
+  if (!surface || session.disposed) return;
+  if (
+    session.appliedFont &&
+    fontSpecKey(session.appliedFont) === fontSpecKey(font)
+  )
+    return;
 
   await ensureMonoFontsLoaded();
   await document.fonts.ready;
   const metrics = await measureTerminalFont(font);
   if (
     session.disposed ||
-    !session.surface ||
+    session.surface !== surface ||
     fontSpecKey(session.font) !== fontSpecKey(font)
   ) {
     return;
   }
-  session.surface.setFontMetrics(metrics);
+  surface.setFontMetrics(metrics);
+  session.appliedFont = metrics.font;
   ghosttyBlocks(session.leafId)?.changed();
   if (session.surfaceOptions)
     session.surfaceOptions = { ...session.surfaceOptions, metrics };

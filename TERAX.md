@@ -197,8 +197,12 @@ fonts by family name nor `document.fonts.check` for them, so on macOS the
 configured (or auto-detected) family is read through `fonts_read_installed` and
 `fonts_find_installed` (`src-tauri/src/modules/fonts.rs`) and registered as a
 `FontFace` before the first measurement: the canvas probe then sees it and
-glyph rasterization draws its glyphs. Private-use prompt symbols require an
-installed font that supplies them; Terax does not ship a separate symbol font.
+glyph rasterization draws its glyphs. A registered face bumps a font revision
+that the terminal font hook reads as an external-store snapshot, so the
+resolved family reaches terminals created before detection: a late font is
+re-measured instead of leaving the default tab on the pre-detect font until a
+tab switch. Private-use prompt symbols require an installed font that supplies
+them; Terax does not ship a separate symbol font.
 Native color emoji remain on the system fallback path. Rerun requires the
 complete command submitted through Terax; truncated shell labels are never
 executed.
