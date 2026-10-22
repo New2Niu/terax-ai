@@ -76,6 +76,7 @@
     "@radix-ui/react-use-controllable-state": "^1.2.6",
     "@replit/codemirror-lang-svelte": "^6.0.0",
     "@replit/codemirror-vim": "^6.4.0",
+    "@streamdown/mermaid": "^1.0.3",
     "@tanstack/react-virtual": "^3.14.13",
     "@tauri-apps/api": "^2.12.3",
     "@tauri-apps/plugin-autostart": "~2.6.0",

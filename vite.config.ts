@@ -92,6 +92,25 @@ const AI_PROVIDER_CHUNKS: Record<string, string> = {
   "@ai-sdk/xai": "ai-xai",
 };
 
+/**
+ * Vendored libs shared by several *different* lazy surfaces. Claimed above the
+ * lazy groups so no feature chunk's `includeDependenciesRecursively` can
+ * swallow them (same mechanism as the eager group outranking the lazy one).
+ */
+function sharedVendorChunk(id: string): string | null {
+  // `marked` has three lazy consumers: streamdown core, the mermaid plugin
+  // (mermaid core depends on it) and codemirror-languageserver's hover
+  // renderer. pnpm dedupes mermaid's `marked@^16` with the LSP client's
+  // `marked@^16.1.2` onto one instance, so left to the lazy groups the mermaid
+  // group swallowed it and the LSP `client` chunk statically imported the 3 MB
+  // mermaid chunk just to render hover markdown. Own small chunk instead,
+  // imported directly by every consumer. (Two majors coexist — 17.x for
+  // streamdown, 16.x shared by mermaid/LSP — so the chunk holds both copies;
+  // they are distinct module instances and cannot be deduped.)
+  if (packageOf(id) === "marked") return "marked";
+  return null;
+}
+
 /** Heavy features loaded on demand; each lands in its own named chunk. */
 function lazyChunk(id: string): string | null {
   const pkg = packageOf(id);
@@ -122,6 +141,16 @@ function lazyChunk(id: string): string | null {
     pkg.startsWith("@replit/codemirror")
   )
     return "codemirror";
+  // The mermaid plugin is a thin wrapper around ~3 MB of diagram code
+  // (mermaid core plus dayjs/khroma/cytoscape deps; katex, the mermaid parser
+  // and the per-diagram-type chunks stay separate). Left to the streamdown
+  // group below, `includeDependenciesRecursively` would swallow mermaid into
+  // the streamdown chunk, so every markdown or chat render would pay for
+  // diagrams even when the document contains none. Own chunk instead, reached
+  // only by MermaidDiagram's dynamic import. (`marked`, which mermaid shares
+  // with the LSP client, is claimed by the sharedVendorChunk group above so
+  // this group cannot swallow it.)
+  if (pkg === "@streamdown/mermaid" || pkg === "mermaid") return "mermaid";
   if (pkg === "streamdown" || pkg.startsWith("@streamdown/"))
     return "streamdown";
 
@@ -196,6 +225,7 @@ export default defineConfig(async ({ mode }): Promise<UserConfig> => ({
         codeSplitting: {
           groups: [
             { name: eagerChunk, priority: 100 },
+            { name: sharedVendorChunk, priority: 50 },
             { name: lazyChunk, priority: 0 },
           ],
         },

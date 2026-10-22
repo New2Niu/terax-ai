@@ -11,6 +11,10 @@ const HEAVY = [
   "@ai-sdk",
   "ai",
   "streamdown",
+  // pkgOf matches by exact/prefix, so the scoped plugin package needs its own
+  // entry: only MermaidDiagram's dynamic import may pull the diagram stack.
+  "@streamdown",
+  "mermaid",
   "@codemirror",
   "@uiw",
   "motion",

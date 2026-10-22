@@ -21,6 +21,10 @@ import { highlight, isHighlightable, type HighlightedNode } from "./chat-code-le
 const StreamingCtx = createContext(false);
 export const ChatStreamingProvider = StreamingCtx.Provider;
 
+export function useChatStreaming(): boolean {
+  return useContext(StreamingCtx);
+}
+
 const POSIX_SHELL = new Set([
   "bash",
   "sh",

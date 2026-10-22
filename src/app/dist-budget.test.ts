@@ -5,6 +5,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -203,6 +204,8 @@ describe("built startup graph", () => {
       "streamdown",
       "codemirror",
       "iconEngine",
+      "mermaid",
+      "marked",
     ]) {
       const file = chunks.find((f) => chunkName(f) === stem);
       expect(file, `${stem} chunk should be emitted`).toBeDefined();
@@ -212,10 +215,67 @@ describe("built startup graph", () => {
       const referenced = [...texts].some(
         ([other, code]) => other !== file && code.includes(file as string),
       );
-      expect(referenced, `${stem} must be referenced by a dynamic import`).toBe(
-        true,
-      );
+      expect(
+        referenced,
+        `${stem} must be referenced by another chunk (reached lazily)`,
+      ).toBe(true);
     }
+  });
+
+  it("keeps the mermaid stack out of the streamdown chunk: markdown without diagrams pays nothing", () => {
+    const assets = join(outDir, "assets");
+    const file = readdirSync(assets).find(
+      (f) => f.endsWith(".js") && chunkName(f) === "streamdown",
+    );
+    expect(file, "streamdown chunk should be emitted").toBeDefined();
+    const pkgs = packagesFromMap(
+      readFileSync(join(assets, `${file}.map`), "utf8"),
+    );
+    const diagramPkgs = [...(pkgs ?? [])].filter((p) =>
+      /^(?:mermaid|@mermaid-js\/|@streamdown\/mermaid)$/.test(p),
+    );
+    expect(diagramPkgs, "streamdown chunk must not contain diagram code").toEqual(
+      [],
+    );
+  });
+
+  it("lets only mermaid's own re-export stubs statically import the mermaid chunk (the shared-`marked` trap)", () => {
+    // Regression guard for the shared-dependency trap: `marked` is used by
+    // streamdown, by mermaid core and by codemirror-languageserver's hover
+    // renderer. When the mermaid group swallowed it via
+    // `includeDependenciesRecursively`, the LSP `client` chunk statically
+    // imported the 3 MB mermaid chunk just to call `marked.parse` on hover.
+    //
+    // Mermaid's own lazy diagram chunks are the only legitimate static
+    // importers, and each is a pure re-export stub — nothing but
+    // `import{…}from"./mermaid-*.js"; export{…};`. Any importer that also
+    // contains real code is a second consumer that should have reached
+    // mermaid through a dynamic import instead.
+    const assets = join(outDir, "assets");
+    const chunks = readdirSync(assets).filter((f) => f.endsWith(".js"));
+    const mermaidFile = chunks
+      .filter((f) => chunkName(f) === "mermaid")
+      .map((f) => [f, statSync(join(assets, f)).size] as const)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    expect(mermaidFile, "mermaid chunk should be emitted").toBeDefined();
+    const edge = `./${mermaidFile}`;
+    const offenders: string[] = [];
+    for (const f of chunks) {
+      if (f === mermaidFile) continue;
+      const code = readFileSync(join(assets, f), "utf8");
+      if (!staticImports(code).includes(edge)) continue;
+      const residue = code
+        .replace(
+          /(?:^|[;}\n])\s*import\s*(?:[\w$*{}\s,]+?\s*from\s*)?(?:"[^"\n]+"|'[^'\n']+')\s*;?/g,
+          "",
+        )
+        .replace(/(?:^|[}\n])\s*export\s*\{[^}]*\}\s*;?/g, "")
+        .trim();
+      if (residue) offenders.push(`${f} (${residue.length} chars of code)`);
+    }
+    expect(offenders, "only re-export stubs may statically import mermaid").toEqual(
+      [],
+    );
   });
 
   it("refuses to build the app-lab driver without its own identifier, and under the product one", () => {

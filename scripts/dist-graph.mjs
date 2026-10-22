@@ -28,6 +28,10 @@ export const FORBIDDEN_CHUNK_PATTERNS = [
   /^streamdown$/,
   /^codemirror$/,
   /^cm-(?:lang|legacy)-/,
+  // Diagram stack (vite.config `mermaid` group) and the shared `marked`
+  // vendor chunk (sharedVendorChunk group); both are lazy-only.
+  /^mermaid$/,
+  /^marked$/,
 ];
 
 /**
@@ -57,6 +61,14 @@ export const FORBIDDEN_PACKAGES = [
   /^codemirror/,
   /^streamdown$/,
   /^@streamdown\//,
+  // Diagram stack: only MermaidDiagram's dynamic import may load it. katex and
+  // the mermaid parser ride along with mermaid core; `marked` is the shared
+  // vendor chunk three lazy surfaces import (streamdown, mermaid, the LSP
+  // hover renderer) — none of them eager.
+  /^mermaid$/,
+  /^@mermaid-js\//,
+  /^katex$/,
+  /^marked$/,
   /^@iconify-json\//,
   /^(?:motion|framer-motion|motion-dom|motion-utils)$/,
   /^(?:@xterm\/|xterm)/,

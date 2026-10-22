@@ -3,6 +3,7 @@
 import { isValidElement, type ReactNode } from "react";
 
 import { ChatCodeBlock } from "./chat-code";
+import { MermaidDiagram } from "./mermaid";
 
 export function markdownCodeText(children?: ReactNode): string {
   if (children == null || typeof children === "boolean") return "";
@@ -44,5 +45,8 @@ export function MarkdownCode({
   }
 
   const code = markdownCodeText(children).replace(/\n$/, "");
+  if (match[1] === "mermaid") {
+    return <MermaidDiagram code={code} />;
+  }
   return <ChatCodeBlock code={code} lang={match[1] ?? null} />;
 }
